@@ -1,51 +1,54 @@
-// Flat Design Pastel Zen Theme
+import { Platform } from 'react-native';
+
+// Carton-pâte — brutalist redesign
+// Noir, papier, jaune acide. Zéro arrondi, filets épais, tout en majuscules.
 export const theme = {
   colors: {
-    // Palette Pastel Froid
-    primary: '#a7d5e2',        // Bleu ciel pastel
-    secondary: '#abe2cd',      // Menthe pastel
-    accent: '#bea4ec',         // Lilas pastel
-
-    // Backgrounds
-    background: '#dbecee',     // Blanc cassé très léger
-    card: '#FFFFFF',           // Blanc pur
-    surface: '#FAFCFD',        // Surface légèrement teintée
-
-    // Text
-    text: '#4A5568',           // Gris foncé doux
-    textSecondary: '#8B9DC3',  // Bleu-gris pastel
-    textTertiary: '#B8C5D6',   // Gris très clair
-
-    // Status
-    success: '#B8E6D5',        // Menthe
-    warning: '#FFE4CC',        // Pêche très pâle
-    error: '#FFD4D4',          // Rose très pâle
-    info: '#A8D5E2',           // Bleu ciel pastel
-
-    // Neutrals
+    // Palette Carton-pâte
+    ink: '#141414',
+    yellow: '#E8FF00',
+    paper: '#F2F0EA',
+    paperAlt: '#EDEBE4',
     white: '#FFFFFF',
-    black: '#2D3748',          // Noir doux
+    textMuted: '#57534b',
+    textFaint: '#8a8579',
+    placeholderA: '#dcd8ce',
+    placeholderB: '#cfcabd',
 
-    // Borders
-    border: '#E8F0F5',         // Border très subtile
-    borderLight: '#F0F5F9',    // Border ultra-légère
+    // Alias conservés pour compatibilité — tous repointés vers la palette brutaliste
+    primary: '#141414',
+    secondary: '#E8FF00',
+    accent: '#E8FF00',
 
-    // Variations pastel pour variety
-    mint: '#B8E6D5',
-    sky: '#A8D5E2',
-    lilac: '#D4C5E9',
-    peach: '#FFE4CC',
-    rose: '#FFD4D4',
-    lavender: '#E5D9F2',
-    aqua: '#D0E8F2',
+    background: '#F2F0EA',
+    card: '#FFFFFF',
+    surface: '#F2F0EA',
+
+    text: '#141414',
+    textSecondary: '#57534b',
+    textTertiary: '#8a8579',
+
+    success: '#E8FF00',
+    warning: '#E8FF00',
+    error: '#141414',
+    info: '#141414',
+
+    white2: '#FFFFFF',
+    black: '#141414',
+
+    border: '#141414',
+    borderLight: '#141414',
   },
 
   typography: {
     fontFamily: {
+      // Substituts système pour Archivo Black / JetBrains Mono (pas de police custom liée nativement)
+      display: Platform.select({ ios: 'Arial Black', android: 'sans-serif-black', default: 'System' }),
       regular: 'System',
       medium: 'System',
       semiBold: 'System',
       bold: 'System',
+      mono: Platform.select({ ios: 'Courier New', android: 'monospace', default: 'monospace' }),
     },
     fontSize: {
       xs: 11,
@@ -63,6 +66,7 @@ export const theme = {
       semiBold: '600' as const,
       bold: '700' as const,
       extraBold: '800' as const,
+      black: '900' as const,
     },
     lineHeight: {
       tight: 1.2,
@@ -75,6 +79,7 @@ export const theme = {
       normal: 0,
       wide: 0.3,
       wider: 0.5,
+      mono: 1,
     },
   },
 
@@ -88,21 +93,28 @@ export const theme = {
     xxxl: 64,
   },
 
-  // Border-radius très élevé pour formes douces
+  // Zéro arrondi — c'est le principe du système Carton-pâte
   borderRadius: {
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 28,
-    xxl: 36,
-    full: 9999,
+    sm: 0,
+    md: 0,
+    lg: 0,
+    xl: 0,
+    xxl: 0,
+    full: 0,
   },
 
-  // Borders subtiles
+  // Filets épais, caractéristiques du système
   borders: {
-    hairline: 0.5,
-    thin: 1,
+    hairline: 1,
+    thin: 2,
     medium: 2,
+    thick: 3,
+  },
+
+  // Décalage du "hard shadow" brutaliste (bloc plein, pas de flou)
+  hardShadow: {
+    offset: 8,
+    offsetSmall: 5,
   },
 
   // Animation values

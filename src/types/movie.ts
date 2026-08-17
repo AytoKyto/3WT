@@ -72,3 +72,18 @@ export interface Provider {
   provider_name: string;
   display_priority: number;
 }
+
+export interface Person {
+  id: number;
+  name: string;
+  profile_path: string | null;
+  known_for_department: string;
+  popularity: number;
+}
+
+export interface PersonSearchResponse {
+  page: number;
+  results: Person[];
+  total_pages: number;
+  total_results: number;
+}

@@ -42,41 +42,30 @@ const Button: React.FC<ButtonProps> = ({
   const [pressed, setPressed] = useState(false);
   const scaleStyle = useScaleAnimation(pressed);
 
-  // Couleurs par type
-  const colorMap = {
-    primary: theme.colors.primary,
-    secondary: theme.colors.secondary,
-    accent: theme.colors.accent,
-    success: theme.colors.success,
-    error: theme.colors.error,
-  };
+  // En Carton-pâte tout se ramène à deux blocs : encre ou jaune acide.
+  const baseColor = color === 'secondary' || color === 'accent' || color === 'success'
+    ? theme.colors.yellow
+    : theme.colors.ink;
 
-  const baseColor = colorMap[color];
-
-  // Variantes de style
   const variantConfig = {
     filled: {
       backgroundColor: baseColor,
-      textColor: color === 'error' || color === 'success' ? theme.colors.text : theme.colors.white,
-      borderWidth: 0,
-      borderColor: 'transparent',
+      textColor: baseColor === theme.colors.yellow ? theme.colors.ink : theme.colors.yellow,
+      borderColor: theme.colors.ink,
     },
     tinted: {
-      backgroundColor: theme.colors.accent, // 20% opacity
-      textColor: theme.colors.text,
-      borderWidth: 0,
-      borderColor: 'transparent',
+      backgroundColor: theme.colors.yellow,
+      textColor: theme.colors.ink,
+      borderColor: theme.colors.ink,
     },
     outline: {
-      backgroundColor: 'transparent',
-      textColor: theme.colors.text,
-      borderWidth: 2,
-      borderColor: baseColor,
+      backgroundColor: theme.colors.paper,
+      textColor: theme.colors.ink,
+      borderColor: theme.colors.ink,
     },
     ghost: {
       backgroundColor: 'transparent',
-      textColor: theme.colors.text,
-      borderWidth: 0,
+      textColor: theme.colors.ink,
       borderColor: 'transparent',
     },
   };
@@ -86,19 +75,16 @@ const Button: React.FC<ButtonProps> = ({
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.sm,
       fontSize: theme.typography.fontSize.sm,
-      borderRadius: theme.borderRadius.md,
     },
     medium: {
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
       fontSize: theme.typography.fontSize.md,
-      borderRadius: theme.borderRadius.lg,
     },
     large: {
       paddingHorizontal: theme.spacing.xl,
       paddingVertical: theme.spacing.lg,
       fontSize: theme.typography.fontSize.lg,
-      borderRadius: theme.borderRadius.xl,
     },
   };
 
@@ -115,12 +101,11 @@ const Button: React.FC<ButtonProps> = ({
         scaleStyle,
         styles.button,
         {
-          backgroundColor: disabled ? theme.colors.border : variantStyle.backgroundColor,
+          backgroundColor: disabled ? theme.colors.paperAlt : variantStyle.backgroundColor,
           paddingHorizontal: config.paddingHorizontal,
           paddingVertical: config.paddingVertical,
-          borderRadius: config.borderRadius,
-          borderWidth: variantStyle.borderWidth,
-          borderColor: disabled ? theme.colors.border : variantStyle.borderColor,
+          borderWidth: variant === 'ghost' ? 0 : theme.borders.thick,
+          borderColor: disabled ? theme.colors.textFaint : variantStyle.borderColor,
         },
         disabled && styles.disabled,
         style,
@@ -136,12 +121,12 @@ const Button: React.FC<ButtonProps> = ({
               styles.text,
               {
                 fontSize: config.fontSize,
-                color: disabled ? theme.colors.textTertiary : variantStyle.textColor,
+                color: disabled ? theme.colors.textFaint : variantStyle.textColor,
               },
               textStyle,
             ]}
           >
-            {title}
+            {title.toUpperCase()}
           </Text>
         </View>
       )}
@@ -153,7 +138,6 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   disabled: {
     opacity: theme.opacity.disabled,
@@ -167,8 +151,9 @@ const styles = StyleSheet.create({
     marginRight: theme.spacing.sm,
   },
   text: {
-    fontWeight: theme.typography.fontWeight.semiBold,
-    letterSpacing: theme.typography.letterSpacing.normal,
+    fontFamily: theme.typography.fontFamily.display,
+    fontWeight: theme.typography.fontWeight.black,
+    letterSpacing: theme.typography.letterSpacing.tight,
   },
 });
 

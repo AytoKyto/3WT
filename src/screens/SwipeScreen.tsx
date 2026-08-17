@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,192 +7,190 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  Image,
 } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, Easing } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import Swiper from 'react-native-deck-swiper';
 import { theme } from '../styles/theme';
 import MovieCard from '../components/MovieCard';
+import SeriesCard from '../components/SeriesCard';
+import Logo from '../components/Logo';
+import MediaTypeToggle, { MediaType } from '../components/MediaTypeToggle';
 import { Movie } from '../types/movie';
-import { movieService } from '../services/api/tmdb';
+import { TVShow } from '../types/tv';
+import { movieService, tvService, getImageUrl } from '../services/api/tmdb';
 import useMovieStore from '../store/useMovieStore';
+import useSeriesStore from '../store/useSeriesStore';
 import useStreamingStore from '../store/useStreamingStore';
-import { useFadeIn, useSlideIn, useScaleAnimation, usePulse } from '../hooks/useAnimations';
+import { useFadeIn, useSlideIn } from '../hooks/useAnimations';
+import AnimatedTouchable from '../components/AnimatedTouchable';
 
-// Composant indicateur animé
-const AnimatedSwipeIndicator = ({ emoji, text, index }: { emoji: string; text: string; index: number }) => {
-  const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.8);
+type Item = Movie | TVShow;
 
-  useEffect(() => {
-    const delay = index * 100;
-    opacity.value = withTiming(1, {
-      duration: 400,
-      easing: Easing.out(Easing.ease),
-    });
-    scale.value = withSpring(1, {
-      ...theme.animation.easing.springGentle,
-      delay,
-    });
-  }, [index]);
+const MOVIE_CATEGORIES = ['popular', 'top_rated', 'upcoming'];
+const TV_CATEGORIES = ['popular', 'top_rated', 'on_the_air'];
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View style={[styles.swipeIndicator, animatedStyle]}>
-      <Text style={styles.swipeIndicatorEmoji}>{emoji}</Text>
-      <Text style={styles.swipeIndicatorText}>{text}</Text>
-    </Animated.View>
-  );
+const CATEGORY_LABEL: Record<string, string> = {
+  popular: 'POPULAIRES',
+  top_rated: 'MIEUX NOTÉS',
+  upcoming: 'À VENIR',
+  on_the_air: 'EN COURS',
 };
 
 const SwipeScreen = () => {
-  const [movies, setMovies] = useState<Movie[]>([]);
+  const [mediaType, setMediaType] = useState<MediaType>('movie');
+  const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [hasMorePages, setHasMorePages] = useState(true);
-  const [totalPages, setTotalPages] = useState(1);
-  const [movieCategory, setMovieCategory] = useState<'popular' | 'top_rated' | 'upcoming'>('popular');
-  const [undoPressed, setUndoPressed] = useState(false);
-  const swiperRef = useRef<Swiper<Movie>>(null);
+  const [categoryIndex, setCategoryIndex] = useState(0);
+  const swiperRef = useRef<Swiper<Item>>(null);
+  const prefetchedIds = useRef<Set<number>>(new Set());
 
-  const {
-    addToWatchlist,
-    addToSwiped,
-    addToSuperLiked,
-    hasBeenSwiped,
-  } = useMovieStore();
+  const movieStore = useMovieStore();
+  const seriesStore = useSeriesStore();
+  const { showAllMovies } = useStreamingStore();
 
-  const { getSelectedProviderIds, showAllMovies } = useStreamingStore();
-
-  // Animations d'entrée
   const headerFade = useFadeIn(500);
   const headerSlide = useSlideIn('top', 20, 500);
-  const undoScale = useScaleAnimation(undoPressed);
-  const undoPulse = usePulse();
+
+  const categories = mediaType === 'tv' ? TV_CATEGORIES : MOVIE_CATEGORIES;
+  const category = categories[categoryIndex];
+
+  const hasBeenSwiped = (id: number) =>
+    mediaType === 'tv' ? seriesStore.hasBeenSwiped(id) : movieStore.hasBeenSwiped(id);
+  const addToSwiped = (id: number) =>
+    mediaType === 'tv' ? seriesStore.addToSwiped(id) : movieStore.addToSwiped(id);
+  const addToWatchlist = (item: Item) =>
+    mediaType === 'tv' ? seriesStore.addToWatchlist(item as TVShow) : movieStore.addToWatchlist(item as Movie);
+  const addToSuperLiked = (item: Item) =>
+    mediaType === 'tv' ? seriesStore.addToSuperLiked(item as TVShow) : movieStore.addToSuperLiked(item as Movie);
+  const markAsWatched = (item: Item) =>
+    mediaType === 'tv' ? seriesStore.markAsWatched(item as TVShow) : movieStore.markAsWatched(item as Movie);
+
+  const handleMediaTypeChange = (next: MediaType) => {
+    if (next === mediaType) return;
+    setMediaType(next);
+    setItems([]);
+    setCurrentIndex(0);
+    setCurrentPage(1);
+    setCategoryIndex(0);
+    setHasMorePages(true);
+  };
 
   useEffect(() => {
-    loadMovies();
-  }, [currentPage, movieCategory]);
+    loadItems();
+  }, [currentPage, categoryIndex, mediaType]);
 
-  const loadMovies = async () => {
+  // Précharge les affiches à venir pour éviter le flash blanc au changement de carte.
+  // On ne précharge que les nouvelles affiches (jamais deux fois la même) pour éviter
+  // d'accumuler des appels réseau redondants sur une longue session de swipe.
+  useEffect(() => {
+    const upcoming = items.slice(currentIndex, currentIndex + 6);
+    upcoming.forEach((item) => {
+      if (prefetchedIds.current.has(item.id)) return;
+      const url = getImageUrl(item.poster_path, 'w500');
+      if (url) {
+        prefetchedIds.current.add(item.id);
+        Image.prefetch(url);
+      }
+    });
+  }, [items, currentIndex]);
+
+  const fetchPage = (page: number) => {
+    if (mediaType === 'tv') {
+      switch (category) {
+        case 'top_rated': return tvService.getTopRated(page);
+        case 'on_the_air': return tvService.getOnTheAir(page);
+        default: return tvService.getPopular(page);
+      }
+    }
+    switch (category) {
+      case 'top_rated': return movieService.getTopRated(page);
+      case 'upcoming': return movieService.getUpcoming(page);
+      default: return movieService.getPopular(page);
+    }
+  };
+
+  const loadItems = async () => {
     try {
       setLoading(true);
-      console.log(`Chargement de la catégorie ${movieCategory}, page ${currentPage}...`);
+      console.log(`Chargement de la catégorie ${category} (${mediaType}), page ${currentPage}...`);
 
-      // Choisir la bonne méthode selon la catégorie
-      let response;
-      switch (movieCategory) {
-        case 'top_rated':
-          console.log('Appel API: getTopRated');
-          response = await movieService.getTopRated(currentPage);
-          break;
-        case 'upcoming':
-          console.log('Appel API: getUpcoming');
-          response = await movieService.getUpcoming(currentPage);
-          break;
-        default:
-          console.log('Appel API: getPopular');
-          response = await movieService.getPopular(currentPage);
-      }
+      const response = await fetchPage(currentPage);
+      const maxPages = Math.min(response.total_pages || 500, 500);
 
-      console.log('Réponse API reçue:', response ? 'OK' : 'NULL');
-      
-      // Mettre à jour le nombre total de pages
-      const maxPages = Math.min(response.total_pages || 500, 500); // Limiter à 500 pages
-      setTotalPages(maxPages);
-      
-      // Filtrer les films déjà swipés ET ceux déjà dans la pile
-      const newMovies = response.results.filter(
-        (movie: Movie) => !hasBeenSwiped(movie.id) && !movies.some(m => m.id === movie.id)
-      );
-
-      console.log(`${movieCategory} - Page ${currentPage}: ${newMovies.length} nouveaux films sur ${response.results.length}`);
-      console.log('Réponse API:', response);
-
-      // Trier les nouveaux films par popularité décroissante
-      const sortedMovies = newMovies.sort((a: Movie, b: Movie) => {
-        if (b.popularity !== a.popularity) {
-          return b.popularity - a.popularity;
-        }
-        return b.vote_average - a.vote_average;
+      let addedCount = 0;
+      setItems(prevItems => {
+        const existingIds = new Set(prevItems.map(i => i.id));
+        const newItems: Item[] = response.results.filter(
+          (item: Item) => !hasBeenSwiped(item.id) && !existingIds.has(item.id)
+        );
+        addedCount = newItems.length;
+        const sortedItems = newItems.sort((a: Item, b: Item) => {
+          if (b.popularity !== a.popularity) {
+            return b.popularity - a.popularity;
+          }
+          return b.vote_average - a.vote_average;
+        });
+        return [...prevItems, ...sortedItems];
       });
-      
-      // Ajouter seulement les nouveaux films à la fin
-      setMovies(prevMovies => [...prevMovies, ...sortedMovies]);
-      
-      // Si on n'a pas trouvé de nouveaux films
-      if (newMovies.length === 0) {
+
+      if (addedCount === 0) {
         if (currentPage < maxPages) {
-          // Essayer la page suivante
           setCurrentPage(prev => prev + 1);
-        } else if (movieCategory === 'popular') {
-          // Passer à la catégorie suivante
-          console.log('Passage à la catégorie top_rated');
-          setMovieCategory('top_rated');
-          setCurrentPage(1);
-          setHasMorePages(true);
-        } else if (movieCategory === 'top_rated') {
-          // Passer à la catégorie upcoming
-          console.log('Passage à la catégorie upcoming');
-          setMovieCategory('upcoming');
+        } else if (categoryIndex < categories.length - 1) {
+          setCategoryIndex(prev => prev + 1);
           setCurrentPage(1);
           setHasMorePages(true);
         } else {
-          // Plus de films disponibles
           setHasMorePages(false);
         }
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des films:', error);
-      Alert.alert('Erreur', 'Impossible de charger les films');
+      console.error('Erreur lors du chargement:', error);
+      Alert.alert('Erreur', mediaType === 'tv' ? 'Impossible de charger les séries' : 'Impossible de charger les films');
     } finally {
       setLoading(false);
     }
   };
 
-  const onSwipedLeft = (cardIndex: number) => {
-    const movie = movies[cardIndex];
-    console.log('Swiped left:', movie.title);
-    addToSwiped(movie.id);
-    setCurrentIndex(cardIndex + 1);
-    
-    // Charger plus de films si on approche de la fin
-    if (cardIndex >= movies.length - 10 && !loading && hasMorePages) {
-      console.log('Chargement automatique de plus de films...');
+  const maybeLoadMore = (cardIndex: number) => {
+    if (cardIndex >= items.length - 10 && !loading && hasMorePages) {
       setCurrentPage(prev => prev + 1);
     }
+  };
+
+  const onSwipedLeft = (cardIndex: number) => {
+    const item = items[cardIndex];
+    addToSwiped(item.id);
+    setCurrentIndex(cardIndex + 1);
+    maybeLoadMore(cardIndex);
   };
 
   const onSwipedRight = (cardIndex: number) => {
-    const movie = movies[cardIndex];
-    console.log('Swiped right (added):', movie.title);
-    addToWatchlist(movie);
-    addToSwiped(movie.id);
+    const item = items[cardIndex];
+    addToWatchlist(item);
+    addToSwiped(item.id);
     setCurrentIndex(cardIndex + 1);
-    
-    // Charger plus de films si on approche de la fin
-    if (cardIndex >= movies.length - 10 && !loading && hasMorePages) {
-      console.log('Chargement automatique de plus de films...');
-      setCurrentPage(prev => prev + 1);
-    }
+    maybeLoadMore(cardIndex);
   };
 
   const onSwipedTop = (cardIndex: number) => {
-    const movie = movies[cardIndex];
-    console.log('Swiped top (super liked):', movie.title);
-    addToSuperLiked(movie);
-    addToSwiped(movie.id);
+    const item = items[cardIndex];
+    addToSuperLiked(item);
+    addToSwiped(item.id);
     setCurrentIndex(cardIndex + 1);
-    
-    // Charger plus de films si on approche de la fin
-    if (cardIndex >= movies.length - 10 && !loading && hasMorePages) {
-      console.log('Chargement automatique de plus de films...');
-      setCurrentPage(prev => prev + 1);
-    }
+    maybeLoadMore(cardIndex);
+  };
+
+  const onSwipedBottom = (cardIndex: number) => {
+    const item = items[cardIndex];
+    markAsWatched(item);
+    addToSwiped(item.id);
+    setCurrentIndex(cardIndex + 1);
+    maybeLoadMore(cardIndex);
   };
 
   const handleUndo = () => {
@@ -202,27 +200,31 @@ const SwipeScreen = () => {
     }
   };
 
-  if (loading && movies.length === 0) {
+  if (loading && items.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.loadingText}>Chargement des films...</Text>
+          <ActivityIndicator size="large" color={theme.colors.ink} />
+          <Text style={styles.loadingText}>
+            {mediaType === 'tv' ? 'CHARGEMENT DES SÉRIES…' : 'CHARGEMENT DES FILMS…'}
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (movies.length === 0 && !loading) {
+  if (items.length === 0 && !loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <View style={styles.toggleRow}>
+          <MediaTypeToggle value={mediaType} onChange={handleMediaTypeChange} />
+        </View>
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyEmoji}>🎬</Text>
-          <Text style={styles.emptyText}>Vous avez tout vu !</Text>
+          <Text style={styles.emptyText}>VOUS AVEZ TOUT VU</Text>
           <Text style={styles.emptySubtext}>
-            Explorez d'autres catégories ou réinitialisez votre historique
+            Explorez d'autres catégories ou réinitialisez votre historique.
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.resetButton}
             onPress={() => {
               Alert.alert(
@@ -230,109 +232,142 @@ const SwipeScreen = () => {
                 'Voulez-vous réinitialiser votre historique de swipe ?',
                 [
                   { text: 'Annuler', style: 'cancel' },
-                  { 
+                  {
                     text: 'Réinitialiser',
                     style: 'destructive',
                     onPress: () => {
-                      // Réinitialiser seulement les films swipés
-                      useMovieStore.getState().clearSwipedMovies();
-                      setMovies([]);
-                      setMovieCategory('popular');
+                      if (mediaType === 'tv') seriesStore.clearSwipedShows();
+                      else movieStore.clearSwipedMovies();
+                      setItems([]);
+                      setCategoryIndex(0);
                       setCurrentPage(1);
                       setCurrentIndex(0);
                       setHasMorePages(true);
-                      // Forcer le rechargement immédiat
-                      setTimeout(() => loadMovies(), 100);
+                      setTimeout(() => loadItems(), 100);
                     }
                   }
                 ]
               );
             }}
           >
-            <Text style={styles.resetButtonText}>Réinitialiser l'historique</Text>
+            <Text style={styles.resetButtonText}>RÉINITIALISER L'HISTORIQUE</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
+  const remaining = Math.max(items.length - currentIndex, 0);
+
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.sessionBar}>
+        <Logo variant="horizontal" colorway="principale" size={15} />
+        <Text style={styles.sessionBarText}>{CATEGORY_LABEL[category]}</Text>
+      </View>
+
+      <View style={styles.toggleRow}>
+        <MediaTypeToggle value={mediaType} onChange={handleMediaTypeChange} />
+      </View>
+
       <Animated.View style={[styles.header, headerFade, headerSlide]}>
-        <Text style={styles.title}>Découvrez</Text>
-        <Text style={styles.subtitle}>Swipez pour créer votre liste</Text>
+        <Text style={styles.title}>TRIER{'\n'}OU JETER</Text>
+        <View style={styles.remainingBlock}>
+          <Text style={styles.remainingLabel}>RESTE</Text>
+          <Text style={styles.remainingValue}>{remaining}</Text>
+        </View>
       </Animated.View>
 
       <View style={styles.swiperContainer}>
         <Swiper
+          key={mediaType}
           ref={swiperRef}
-          cards={movies}
-          renderCard={(movie) => movie ? <MovieCard movie={movie} variant="swipe" /> : null}
-          keyExtractor={(movie) => movie.id.toString()}
+          cards={items}
+          renderCard={(item) => item
+            ? (mediaType === 'tv'
+              ? <SeriesCard show={item as TVShow} variant="swipe" />
+              : <MovieCard movie={item as Movie} variant="swipe" />)
+            : null}
+          keyExtractor={(item) => item.id.toString()}
           onSwipedLeft={onSwipedLeft}
           onSwipedRight={onSwipedRight}
           onSwipedTop={onSwipedTop}
+          onSwipedBottom={onSwipedBottom}
           backgroundColor="transparent"
-          cardIndex={currentIndex}
           stackSize={3}
-          stackScale={10}
-          stackSeparation={15}
-          animateCardOpacity
+          stackScale={6}
+          stackSeparation={10}
+          animateCardOpacity={false}
           animateOverlayLabelsOpacity
           infinite={false}
           overlayLabels={{
             left: {
-              title: 'PASSER',
-              style: {
-                label: styles.overlayLabelLeft,
-                wrapper: styles.overlayWrapper,
-              },
+              title: 'NON',
+              style: { label: styles.overlayLabelLeft, wrapper: styles.overlayWrapper },
             },
             right: {
-              title: 'AJOUTER',
-              style: {
-                label: styles.overlayLabelRight,
-                wrapper: styles.overlayWrapper,
-              },
+              title: 'OUI',
+              style: { label: styles.overlayLabelRight, wrapper: styles.overlayWrapper },
             },
             top: {
-              title: 'SUPER LIKE',
-              style: {
-                label: styles.overlayLabelTop,
-                wrapper: styles.overlayWrapper,
-              },
+              title: 'CE SOIR',
+              style: { label: styles.overlayLabelTop, wrapper: styles.overlayWrapper },
+            },
+            bottom: {
+              title: 'VU',
+              style: { label: styles.overlayLabelBottom, wrapper: styles.overlayWrapper },
             },
           }}
           overlayOpacityHorizontalThreshold={30}
           overlayOpacityVerticalThreshold={30}
           useViewOverflow={false}
         />
+      </View>
 
-        <View style={styles.indicatorsContainer}>
-          <AnimatedSwipeIndicator emoji="👈" text="Passer" index={0} />
-          <AnimatedSwipeIndicator emoji="👆" text="Super" index={1} />
-          <AnimatedSwipeIndicator emoji="👉" text="Ajouter" index={2} />
+      <View style={styles.actionBar}>
+        <AnimatedTouchable
+          style={[styles.actionCell, styles.actionCellNon]}
+          onPress={() => swiperRef.current?.swipeLeft()}
+        >
+          <Text style={styles.actionCellTitle}>NON</Text>
+          <Text style={styles.actionCellHint}>← GAUCHE</Text>
+        </AnimatedTouchable>
+        <AnimatedTouchable
+          style={styles.actionCellCentre}
+          onPress={() => swiperRef.current?.swipeTop()}
+        >
+          <Text style={styles.actionCellCentreArrow}>↑</Text>
+          <Text style={styles.actionCellCentreLabel}>CE SOIR</Text>
+        </AnimatedTouchable>
+        <AnimatedTouchable
+          style={[styles.actionCell, styles.actionCellOui]}
+          onPress={() => swiperRef.current?.swipeRight()}
+        >
+          <Text style={styles.actionCellTitle}>OUI</Text>
+          <Text style={styles.actionCellHint}>DROITE →</Text>
+        </AnimatedTouchable>
+      </View>
+
+      <AnimatedTouchable
+        onPress={() => swiperRef.current?.swipeBottom()}
+        style={styles.watchedRow}
+      >
+        <Text style={styles.watchedRowArrow}>↓</Text>
+        <View>
+          <Text style={styles.watchedRowTitle}>DÉJÀ VU</Text>
+          <Text style={styles.watchedRowHint}>GLISSER VERS LE BAS</Text>
         </View>
-      </View>
+      </AnimatedTouchable>
 
-      <View style={styles.buttonsContainer}>
-        <Animated.View style={[undoScale, currentIndex > 0 && undoPulse]}>
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              styles.undoButton,
-              currentIndex === 0 && styles.undoButtonDisabled
-            ]}
-            onPress={handleUndo}
-            onPressIn={() => setUndoPressed(true)}
-            onPressOut={() => setUndoPressed(false)}
-            disabled={currentIndex === 0}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.actionButtonText}>↩️</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
+      <TouchableOpacity
+        onPress={handleUndo}
+        disabled={currentIndex === 0}
+        style={styles.undoRow}
+      >
+        <Text style={[styles.undoText, currentIndex === 0 && styles.undoTextDisabled]}>
+          ↺ ANNULER LE DERNIER
+        </Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 };
@@ -340,26 +375,66 @@ const SwipeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.paper,
+  },
+  sessionBar: {
+    height: 40,
+    backgroundColor: theme.colors.yellow,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.lg,
+    borderBottomWidth: theme.borders.thick,
+    borderBottomColor: theme.colors.ink,
+  },
+  sessionBarText: {
+    fontFamily: theme.typography.fontFamily.mono,
+    fontWeight: theme.typography.fontWeight.bold,
+    fontSize: 12,
+    letterSpacing: theme.typography.letterSpacing.mono,
+    color: theme.colors.ink,
+  },
+  toggleRow: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
   },
   header: {
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.xs,
-    marginBottom: theme.spacing.xs,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+    borderBottomWidth: theme.borders.thick,
+    borderBottomColor: theme.colors.ink,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
   },
   title: {
-    fontSize: theme.typography.fontSize.xxxl,
-    fontWeight: '900',
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 30,
+    fontWeight: theme.typography.fontWeight.black,
+    color: theme.colors.ink,
+    letterSpacing: -1,
+    lineHeight: 30,
   },
-  subtitle: {
-    fontSize: theme.typography.fontSize.lg,
-    color: theme.colors.textSecondary,
+  remainingBlock: {
+    alignItems: 'flex-end',
+  },
+  remainingLabel: {
+    fontFamily: theme.typography.fontFamily.mono,
+    fontWeight: theme.typography.fontWeight.bold,
+    fontSize: 11,
+    color: theme.colors.ink,
+  },
+  remainingValue: {
+    fontFamily: theme.typography.fontFamily.display,
+    fontWeight: theme.typography.fontWeight.black,
+    fontSize: 26,
+    color: theme.colors.ink,
   },
   swiperContainer: {
     flex: 1,
     paddingHorizontal: theme.spacing.sm,
+    position: 'relative',
   },
   loadingContainer: {
     flex: 1,
@@ -368,8 +443,11 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: theme.spacing.md,
-    fontSize: theme.typography.fontSize.lg,
-    color: theme.colors.textSecondary,
+    fontFamily: theme.typography.fontFamily.mono,
+    fontWeight: theme.typography.fontWeight.bold,
+    fontSize: 13,
+    letterSpacing: theme.typography.letterSpacing.mono,
+    color: theme.colors.textMuted,
   },
   emptyContainer: {
     flex: 1,
@@ -377,21 +455,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: theme.spacing.xl,
   },
-  emptyEmoji: {
-    fontSize: 64,
-    marginBottom: theme.spacing.lg,
-  },
   emptyText: {
-    fontSize: theme.typography.fontSize.xxl,
-    fontWeight: '800',
-    color: theme.colors.text,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 28,
+    fontWeight: theme.typography.fontWeight.black,
+    color: theme.colors.ink,
     marginBottom: theme.spacing.md,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   emptySubtext: {
-    fontSize: theme.typography.fontSize.lg,
-    color: theme.colors.textSecondary,
+    fontFamily: theme.typography.fontFamily.mono,
+    fontSize: 13,
+    color: theme.colors.textMuted,
     textAlign: 'center',
+    lineHeight: 20,
   },
   overlayWrapper: {
     flexDirection: 'column',
@@ -399,96 +477,161 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   overlayLabelLeft: {
-    backgroundColor: '#FF3B30',
-    borderColor: 'transparent',
-    borderWidth: 0,
-    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.paper,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.ink,
     padding: theme.spacing.lg,
-    color: theme.colors.white,
+    color: theme.colors.ink,
+    fontFamily: theme.typography.fontFamily.display,
     fontSize: theme.typography.fontSize.xl,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontWeight: theme.typography.fontWeight.black,
+    letterSpacing: -0.5,
   },
   overlayLabelRight: {
-    backgroundColor: '#34C759',
-    borderColor: 'transparent',
-    borderWidth: 0,
-    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.yellow,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.ink,
     padding: theme.spacing.lg,
-    color: theme.colors.white,
+    color: theme.colors.ink,
+    fontFamily: theme.typography.fontFamily.display,
     fontSize: theme.typography.fontSize.xl,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontWeight: theme.typography.fontWeight.black,
+    letterSpacing: -0.5,
   },
   overlayLabelTop: {
-    backgroundColor: '#FFD60A',
-    borderColor: 'transparent',
-    borderWidth: 0,
-    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.ink,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.ink,
     padding: theme.spacing.lg,
-    color: theme.colors.text,
+    color: theme.colors.yellow,
+    fontFamily: theme.typography.fontFamily.display,
     fontSize: theme.typography.fontSize.xl,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontWeight: theme.typography.fontWeight.black,
+    letterSpacing: -0.5,
   },
-  indicatorsContainer: {
+  overlayLabelBottom: {
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.ink,
+    padding: theme.spacing.lg,
+    color: theme.colors.ink,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: theme.typography.fontSize.xl,
+    fontWeight: theme.typography.fontWeight.black,
+    letterSpacing: -0.5,
+  },
+  actionBar: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: theme.spacing.xl,
+    borderTopWidth: theme.borders.thick,
+    borderColor: theme.colors.ink,
+    backgroundColor: theme.colors.white,
+  },
+  actionCell: {
+    flex: 1,
+    paddingVertical: theme.spacing.md,
+    alignItems: 'center',
+  },
+  actionCellNon: {
+    backgroundColor: theme.colors.paper,
+    borderRightWidth: theme.borders.thick,
+    borderColor: theme.colors.ink,
+  },
+  actionCellOui: {
+    backgroundColor: theme.colors.yellow,
+    borderLeftWidth: theme.borders.thick,
+    borderColor: theme.colors.ink,
+  },
+  actionCellTitle: {
+    fontFamily: theme.typography.fontFamily.display,
+    fontWeight: theme.typography.fontWeight.black,
+    fontSize: 20,
+    color: theme.colors.ink,
+    letterSpacing: -0.3,
+  },
+  actionCellHint: {
+    fontFamily: theme.typography.fontFamily.mono,
+    fontWeight: theme.typography.fontWeight.bold,
+    fontSize: 9,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
+  actionCellCentre: {
+    width: 74,
+    backgroundColor: theme.colors.ink,
+    alignItems: 'center',
     paddingVertical: theme.spacing.md,
   },
-  swipeIndicator: {
-    alignItems: 'center',
+  actionCellCentreArrow: {
+    fontFamily: theme.typography.fontFamily.display,
+    fontWeight: theme.typography.fontWeight.black,
+    fontSize: 20,
+    color: theme.colors.yellow,
   },
-  swipeIndicatorEmoji: {
-    fontSize: 24,
-    marginBottom: theme.spacing.xs,
+  actionCellCentreLabel: {
+    fontFamily: theme.typography.fontFamily.mono,
+    fontWeight: theme.typography.fontWeight.bold,
+    fontSize: 9,
+    color: theme.colors.yellow,
+    marginTop: 2,
   },
-  swipeIndicatorText: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: '600',
-    color: theme.colors.textSecondary,
-  },
-  buttonsContainer: {
+  watchedRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    paddingBottom: theme.spacing.lg,
-  },
-  actionButton: {
-    width: 60,
-    height: 60,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 0,
-    borderColor: 'transparent',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm + 2,
+    backgroundColor: theme.colors.paper,
+    borderTopWidth: theme.borders.medium,
+    borderTopColor: theme.colors.ink,
   },
-  undoButton: {
-    backgroundColor: theme.colors.accent,
+  watchedRowArrow: {
+    fontFamily: theme.typography.fontFamily.display,
+    fontWeight: theme.typography.fontWeight.black,
+    fontSize: 20,
+    color: theme.colors.ink,
   },
-  undoButtonDisabled: {
-    opacity: 0.4,
+  watchedRowTitle: {
+    fontFamily: theme.typography.fontFamily.display,
+    fontWeight: theme.typography.fontWeight.black,
+    fontSize: 14,
+    color: theme.colors.ink,
+    letterSpacing: -0.2,
   },
-  actionButtonText: {
-    fontSize: 28,
+  watchedRowHint: {
+    fontFamily: theme.typography.fontFamily.mono,
+    fontWeight: theme.typography.fontWeight.bold,
+    fontSize: 8,
+    color: theme.colors.textMuted,
+    letterSpacing: theme.typography.letterSpacing.mono,
+    marginTop: 1,
+  },
+  undoRow: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.white,
+  },
+  undoText: {
+    fontFamily: theme.typography.fontFamily.mono,
+    fontWeight: theme.typography.fontWeight.bold,
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    letterSpacing: theme.typography.letterSpacing.mono,
+  },
+  undoTextDisabled: {
+    opacity: theme.opacity.disabled,
   },
   resetButton: {
     marginTop: theme.spacing.xl,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.ink,
     paddingHorizontal: theme.spacing.xl,
     paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 0,
-    borderColor: 'transparent',
   },
   resetButtonText: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: '600',
-    color: theme.colors.white,
-    textTransform: 'uppercase',
+    fontFamily: theme.typography.fontFamily.mono,
+    fontSize: 13,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.yellow,
+    letterSpacing: theme.typography.letterSpacing.mono,
   },
 });
 

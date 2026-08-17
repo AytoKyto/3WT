@@ -2,7 +2,7 @@
   "expo": {
     "name": "3WT",
     "slug": "3wt-app",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -10,16 +10,19 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#141414"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.3wt-app"
+      "bundleIdentifier": "com.anonymous.3wt-app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#141414"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -27,6 +30,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b8df4032-c69c-4ae2-ac67-aa2ba48410c7"
+      }
+    },
+    "owner": "ayto"
   }
 }

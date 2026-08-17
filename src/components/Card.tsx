@@ -15,11 +15,12 @@ interface CardProps {
   children: React.ReactNode;
   style?: ViewStyle;
   onPress?: () => void;
-  variant?: 'default' | 'surface' | 'outlined';
+  variant?: 'default' | 'surface' | 'outlined' | 'ink';
   noPadding?: boolean;
   animated?: boolean;
   animationDelay?: number;
   slideDirection?: 'left' | 'right' | 'top' | 'bottom';
+  hardShadow?: boolean;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -31,6 +32,7 @@ const Card: React.FC<CardProps> = ({
   animated = false,
   animationDelay = 0,
   slideDirection = 'bottom',
+  hardShadow = false,
 }) => {
   const [pressed, setPressed] = useState(false);
   const scaleStyle = useScaleAnimation(pressed);
@@ -39,31 +41,32 @@ const Card: React.FC<CardProps> = ({
 
   const variantConfig = {
     default: {
-      backgroundColor: theme.colors.card,
-      borderWidth: 0,
-      borderColor: 'transparent',
+      backgroundColor: theme.colors.white,
+      borderColor: theme.colors.ink,
     },
     surface: {
-      backgroundColor: theme.colors.surface,
-      borderWidth: 0,
-      borderColor: 'transparent',
+      backgroundColor: theme.colors.paper,
+      borderColor: theme.colors.ink,
     },
     outlined: {
-      backgroundColor: theme.colors.card,
-      borderWidth: theme.borders.thin,
-      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.paper,
+      borderColor: theme.colors.ink,
+    },
+    ink: {
+      backgroundColor: theme.colors.ink,
+      borderColor: theme.colors.ink,
     },
   };
 
   const config = variantConfig[variant];
 
-  const cardContent = (
+  const innerCard = (
     <View
       style={[
         styles.card,
         {
           backgroundColor: config.backgroundColor,
-          borderWidth: config.borderWidth,
+          borderWidth: theme.borders.thick,
           borderColor: config.borderColor,
           padding: noPadding ? 0 : theme.spacing.md,
         },
@@ -73,6 +76,13 @@ const Card: React.FC<CardProps> = ({
       {children}
     </View>
   );
+
+  const cardContent = hardShadow ? (
+    <View style={styles.shadowWrapper}>
+      <View pointerEvents="none" style={styles.shadowBlock} />
+      {innerCard}
+    </View>
+  ) : innerCard;
 
   if (onPress) {
     return (
@@ -104,8 +114,18 @@ const Card: React.FC<CardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: theme.borderRadius.lg,
     overflow: 'hidden',
+  },
+  shadowWrapper: {
+    position: 'relative',
+  },
+  shadowBlock: {
+    position: 'absolute',
+    top: theme.hardShadow.offsetSmall,
+    left: theme.hardShadow.offsetSmall,
+    width: '100%',
+    height: '100%',
+    backgroundColor: theme.colors.ink,
   },
 });
 

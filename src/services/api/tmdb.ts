@@ -76,6 +76,88 @@ export const movieService = {
     const response = await tmdbApi.get(`/movie/${movieId}/watch/providers`);
     return response.data.results?.FR || null;
   },
+
+  getCredits: async (movieId: number) => {
+    const response = await tmdbApi.get(`/movie/${movieId}/credits`);
+    return response.data;
+  },
+
+  searchPeople: async (query: string, page = 1) => {
+    const response = await tmdbApi.get('/search/person', {
+      params: { query, page },
+    });
+    return response.data;
+  },
+
+  getPersonMovies: async (personId: number) => {
+    const response = await tmdbApi.get(`/person/${personId}/movie_credits`);
+    return response.data;
+  },
+};
+
+export const tvService = {
+  getPopular: async (page = 1) => {
+    const response = await tmdbApi.get('/tv/popular', { params: { page } });
+    return response.data;
+  },
+
+  getTopRated: async (page = 1) => {
+    const response = await tmdbApi.get('/tv/top_rated', { params: { page } });
+    return response.data;
+  },
+
+  getOnTheAir: async (page = 1) => {
+    const response = await tmdbApi.get('/tv/on_the_air', { params: { page } });
+    return response.data;
+  },
+
+  getDetails: async (tvId: number) => {
+    const response = await tmdbApi.get(`/tv/${tvId}`);
+    return response.data;
+  },
+
+  searchTV: async (query: string, page = 1) => {
+    const response = await tmdbApi.get('/search/tv', {
+      params: { query, page },
+    });
+    return response.data;
+  },
+
+  getGenres: async () => {
+    const response = await tmdbApi.get('/genre/tv/list');
+    return response.data.genres;
+  },
+
+  getShowsByGenre: async (genreId: number, page = 1) => {
+    const response = await tmdbApi.get('/discover/tv', {
+      params: {
+        with_genres: genreId,
+        page,
+        sort_by: 'popularity.desc',
+      },
+    });
+    return response.data;
+  },
+
+  getSimilar: async (tvId: number) => {
+    const response = await tmdbApi.get(`/tv/${tvId}/similar`);
+    return response.data;
+  },
+
+  getWatchProviders: async (tvId: number) => {
+    const response = await tmdbApi.get(`/tv/${tvId}/watch/providers`);
+    return response.data.results?.FR || null;
+  },
+
+  getCredits: async (tvId: number) => {
+    const response = await tmdbApi.get(`/tv/${tvId}/credits`);
+    return response.data;
+  },
+
+  getPersonShows: async (personId: number) => {
+    const response = await tmdbApi.get(`/person/${personId}/tv_credits`);
+    return response.data;
+  },
 };
 
 export default tmdbApi;

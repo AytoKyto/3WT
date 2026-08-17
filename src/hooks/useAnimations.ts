@@ -6,6 +6,7 @@ import {
   withTiming,
   withRepeat,
   withSequence,
+  withDelay,
   Easing,
   interpolate,
   Extrapolate,
@@ -198,20 +199,14 @@ export const useStagger = (index: number, total: number = 10) => {
   useEffect(() => {
     const delay = Math.min(index * 80, 800); // Cap at 800ms for long lists
 
-    opacity.value = withTiming(1, {
+    opacity.value = withDelay(delay, withTiming(1, {
       duration: theme.animation.duration.slow,
       easing: Easing.out(Easing.ease),
-    });
+    }));
 
-    translateY.value = withSpring(0, {
-      ...theme.animation.easing.springGentle,
-      delay,
-    });
+    translateY.value = withDelay(delay, withSpring(0, theme.animation.easing.springGentle));
 
-    scale.value = withSpring(1, {
-      ...theme.animation.easing.springGentle,
-      delay,
-    });
+    scale.value = withDelay(delay, withSpring(1, theme.animation.easing.springGentle));
   }, [index]);
 
   const animatedStyle = useAnimatedStyle(() => ({

@@ -7,7 +7,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { Movie } from '../types/movie';
+import { TVShow } from '../types/tv';
 import { getImageUrl } from '../services/api/tmdb';
 import { theme } from '../styles/theme';
 import Card from './Card';
@@ -17,8 +17,8 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.9;
 const CARD_HEIGHT = SCREEN_HEIGHT * 0.57;
 
-interface MovieCardProps {
-  movie: Movie;
+interface SeriesCardProps {
+  show: TVShow;
   variant?: 'swipe' | 'list' | 'grid';
   loading?: boolean;
 }
@@ -28,9 +28,9 @@ const formatVoteCount = (count: number) => {
   return `${count} VOTES`;
 };
 
-const MovieCard: React.FC<MovieCardProps> = ({ movie, variant = 'swipe', loading = false }) => {
+const SeriesCard: React.FC<SeriesCardProps> = ({ show, variant = 'swipe', loading = false }) => {
   const [imageLoading, setImageLoading] = useState(true);
-  const posterUrl = getImageUrl(movie.poster_path, 'w500');
+  const posterUrl = getImageUrl(show.poster_path, 'w500');
 
   if (variant === 'swipe') {
     return (
@@ -58,31 +58,31 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, variant = 'swipe', loading
             </View>
           )}
           <View style={styles.cornerTag}>
-            <Text style={styles.cornerTagText}>N°{String(movie.id).slice(-2)} · POPULAIRE</Text>
+            <Text style={styles.cornerTagText}>N°{String(show.id).slice(-2)} · SÉRIE</Text>
           </View>
         </View>
 
         <View style={styles.swipeContent}>
           <Text style={styles.swipeTitle} numberOfLines={1}>
-            {movie.title.toUpperCase()}
+            {show.name.toUpperCase()}
           </Text>
 
           <View style={styles.statRow}>
             <View style={styles.statCell}>
               <Text style={styles.statValue}>
-                {movie.release_date ? new Date(movie.release_date).getFullYear() : '—'}
+                {show.first_air_date ? new Date(show.first_air_date).getFullYear() : '—'}
               </Text>
             </View>
             <View style={[styles.statCell, styles.statCellBordered]}>
-              <Text style={styles.statValue}>{movie.vote_average.toFixed(1)}/10</Text>
+              <Text style={styles.statValue}>{show.vote_average.toFixed(1)}/10</Text>
             </View>
             <View style={styles.statCell}>
-              <Text style={styles.statValue}>{formatVoteCount(movie.vote_count)}</Text>
+              <Text style={styles.statValue}>{formatVoteCount(show.vote_count)}</Text>
             </View>
           </View>
 
           <View style={styles.badgesRow}>
-            <StreamingBadges movieId={movie.id} variant="small" />
+            <StreamingBadges movieId={show.id} variant="small" mediaType="tv" />
           </View>
         </View>
       </Card>
@@ -116,13 +116,13 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, variant = 'swipe', loading
           </View>
           <View style={styles.listInfo}>
             <Text style={styles.listTitle} numberOfLines={2}>
-              {movie.title.toUpperCase()}
+              {show.name.toUpperCase()}
             </Text>
             <Text style={styles.listYear}>
-              {movie.release_date ? new Date(movie.release_date).getFullYear() : '—'} · {movie.vote_average.toFixed(1)}/10
+              {show.first_air_date ? new Date(show.first_air_date).getFullYear() : '—'} · {show.vote_average.toFixed(1)}/10
             </Text>
             <View style={styles.streamingContainer}>
-              <StreamingBadges movieId={movie.id} />
+              <StreamingBadges movieId={show.id} mediaType="tv" />
             </View>
           </View>
         </View>
@@ -156,9 +156,9 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, variant = 'swipe', loading
       </View>
       <View style={styles.gridContent}>
         <Text style={styles.gridTitle} numberOfLines={2}>
-          {movie.title.toUpperCase()}
+          {show.name.toUpperCase()}
         </Text>
-        <Text style={styles.gridRating}>{movie.vote_average.toFixed(1)}/10</Text>
+        <Text style={styles.gridRating}>{show.vote_average.toFixed(1)}/10</Text>
       </View>
     </Card>
   );
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
   },
 
-  // List Card Styles (générique, non utilisé par Ma Liste / Chercher — cf. rows dédiées)
+  // List Card Styles
   listCard: {
     marginVertical: theme.spacing.sm,
     marginHorizontal: theme.spacing.md,
@@ -350,4 +350,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MovieCard;
+export default SeriesCard;
